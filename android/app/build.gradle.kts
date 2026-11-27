@@ -5,12 +5,13 @@ plugins {
 
 android {
     namespace = "com.example.themelora"
-    compileSdk = 34
+    compileSdk = 33
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.example.themelora"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0"
     }
