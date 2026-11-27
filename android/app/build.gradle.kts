@@ -1,19 +1,20 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
-    namespace = "com.example.themelora"
-    compileSdk = 33
-    buildToolsVersion = "37.0.0"
+    namespace = "com.homemonitor"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.themelora"
+        applicationId = "com.homemonitor"
         minSdk = 24
-        targetSdk = 33
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -41,9 +42,23 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.11.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
+    implementation(libs.androidx.activity)
+
+    // CameraX
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+
+    // OkHttp for Telegram API calls
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+
+    // Kotlin Coroutines
+    implementation(libs.coroutines.android)
+
+    // Lifecycle Service (LifecycleService base class)
+    implementation(libs.lifecycle.service)
 }
