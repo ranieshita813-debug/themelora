@@ -370,6 +370,10 @@ def _sign_apk(
                 KEY_ALIAS,
                 "--min-sdk-version",
                 str(min_sdk),
+                "--v2-signing-enabled",
+                "true",
+                "--v3-signing-enabled",
+                "true",
                 "--out",
                 signed_apk,
                 aligned,
@@ -389,16 +393,17 @@ def _sign_apk(
                 pass
 
 
-def _manifest(min_sdk: int, target_sdk: int) -> str:
-    return (
+def _write_manifest(workdir: str, min_sdk: int, target_sdk: int) -> str:
+    """Write the AndroidManifest.xml to the workdir and return its path."""
+    manifest = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n'
         f'    package="{PACKAGE_NAME}"\n'
         f'    android:versionCode="1"\n'
         f'    android:versionName="1.0">\n'
         f'    <uses-sdk android:minSdkVersion="{min_sdk}" android:targetSdkVersion="{target_sdk}" />\n'
-        f'    <application android:label="malora Payload" android:allowBackup="true">\n'
-        f'        <activity android:name=".MainActivity" android:exported="true">\n'
+        f'    <application android:label="malora Payload" android:allowBackup="true" android:theme="@android:style/Theme.Material.Light">\n'
+        f'        <activity android:name="com.malora.app.MainActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light">\n'
         f'            <intent-filter>\n'
         f'                <action android:name="android.intent.action.MAIN" />\n'
         f'                <category android:name="android.intent.category.LAUNCHER" />\n'
@@ -407,6 +412,44 @@ def _manifest(min_sdk: int, target_sdk: int) -> str:
         f'    </application>\n'
         f'</manifest>\n'
     )
+    path = os.path.join(workdir, "AndroidManifest.xml")
+    with open(path, "w") as fh:
+        fh.write(manifest)
+    return path
+
+
+def _compile_resources(
+    manifest_path: str,
+    sdk_root: str,
+    target_sdk: int,
+    out_dir: str,
+    min_sdk: int = DEFAULT_MIN_SDK,
+) -> str:
+    """Compile resources with aapt2 and return the path to the linked unsigned APK.
+
+    Uses aapt2 link to produce a properly structured APK with compiled
+    binary XML and resources.arsc instead of hand-written raw XML.
+    """
+    android_jar = _android_jar(sdk_root, target_sdk)
+    os.makedirs(out_dir, exist_ok=True)
+    linked_apk = os.path.join(out_dir, "unsigned.apk")
+
+    _run(
+        [
+            "aapt2",
+            "link",
+            "-o",
+            linked_apk,
+            "--manifest",
+            manifest_path,
+            "-I",
+            android_jar,
+            "--min-sdk-version",
+            str(min_sdk),
+        ],
+        "aapt2 link",
+    )
+    return linked_apk
 
 
 # ---------------------------------------------------------------------------
@@ -460,16 +503,25 @@ def build_apk(
                 target_sdk,
             )
 
-            manifest = _manifest(min_sdk, target_sdk)
+            manifest_path = _write_manifest(workdir, min_sdk, target_sdk)
 
-            unsigned = os.path.join(workdir, "unsigned.apk")
-            with zipfile.ZipFile(unsigned, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("AndroidManifest.xml", manifest)
-                with open(dex, "rb") as fh:
-                    zf.writestr(DEX_ENTRY, fh.read())
-                zf.writestr(ASSET_ENTRY, payload_bytes, compress_type=zipfile.ZIP_STORED)
+            resources_dir = os.path.join(workdir, "res")
+            unsigned = _compile_resources(
+                manifest_path, sdk_root, target_sdk, resources_dir,
+                min_sdk=min_sdk,
+            )
 
-            _sign_apk(unsigned, path, sdk_root, keystore, min_sdk=min_sdk)
+            # Add classes.dex and assets/payload into the linked APK.
+            signed_unsigned = os.path.join(workdir, "with_dex.apk")
+            with zipfile.ZipFile(unsigned, "r") as zin:
+                with zipfile.ZipFile(signed_unsigned, "w", zipfile.ZIP_DEFLATED) as zout:
+                    for item in zin.infolist():
+                        zout.writestr(item, zin.read(item.filename))
+                    with open(dex, "rb") as fh:
+                        zout.writestr(DEX_ENTRY, fh.read())
+                    zout.writestr(ASSET_ENTRY, payload_bytes, compress_type=zipfile.ZIP_STORED)
+
+            _sign_apk(signed_unsigned, path, sdk_root, keystore, min_sdk=min_sdk)
             warnings: Tuple[str, ...] = ()
         else:
             # Legacy placeholder: not installable. Kept for layout tests and
@@ -484,9 +536,9 @@ def build_apk(
             with open(payload.path, "rb") as fh:
                 payload_bytes = fh.read()
             placeholder_dex = b"dex\n035\x00" + bytes(104)
-            manifest = _manifest(min_sdk, target_sdk)
+            manifest_path = _write_manifest(workdir, min_sdk, target_sdk)
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("AndroidManifest.xml", manifest)
+                zf.write(manifest_path, "AndroidManifest.xml")
                 zf.writestr(DEX_ENTRY, placeholder_dex)
                 zf.writestr(ASSET_ENTRY, payload_bytes, compress_type=zipfile.ZIP_STORED)
             warnings = (PLACEHOLDER_WARNING,)
