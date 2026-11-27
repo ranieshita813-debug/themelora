@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from typing import Callable, Dict
 
-from malora import toolchain, ui
+from malora import controlpanel, toolchain, ui
 from malora.analysis import describe
 from malora.constants import normalize_arch
 from malora.errors import MaloraError
@@ -97,6 +97,7 @@ def cmd_help(session: Session, arg: str) -> None:
             ("/disasm [file]", "disassemble the last build or a file"),
             ("/run [file]", "run a local ELF (host arch, 10 s limit)"),
             ("/doctor", "check the toolchain"),
+            ("/cp", "serve a read-only web control panel URL"),
             ("/clear", "clear the screen"),
             ("/exit", "quit"),
             ("", ""),
@@ -330,6 +331,14 @@ def cmd_clear(session: Session, arg: str) -> None:
     if sys.stdout.isatty():
         print("\033[2J\033[H", end="")
     ui.header()
+
+
+@command("/cp")
+def cmd_cp(session: Session, arg: str) -> None:
+    """Serve a read-only web control panel and print its URL."""
+    url = controlpanel.serve(session)
+    ui.action("Control panel", "accent")
+    ui.result([f"URL: {url}", "Open it in your browser (read-only status)."])
 
 
 @command("/exit", "/quit", "/q")
